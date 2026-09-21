@@ -1,0 +1,12 @@
+{
+  "name": "tahara-send-reminders",
+  "version": "1.0.0",
+  "main": "index.js",
+  "engines": {
+    "node": "20"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.6.0",
+    "suncalc": "^2.0.2"
+  }
+}
