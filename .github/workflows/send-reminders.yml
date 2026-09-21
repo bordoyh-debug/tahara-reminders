@@ -1,0 +1,35 @@
+name: Send tahara reminders
+
+on:
+  schedule:
+    # every 15 minutes. GitHub Actions cron is "best effort" — a run can be
+    # delayed under load (occasionally by quite a bit), but each reminder is
+    # sent the first time its target time has passed today (see index.js),
+    # so a delayed run just sends it a little late rather than missing it.
+    - cron: '*/15 * * * *'
+  # lets you trigger a run manually from the Actions tab, to test the setup
+  # without waiting for the schedule.
+  workflow_dispatch: {}
+
+jobs:
+  send-reminders:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Write Firebase service-account key to a file
+        run: echo "$FIREBASE_SERVICE_ACCOUNT_KEY" > /tmp/service-account.json
+        env:
+          FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+
+      - name: Send reminders
+        run: node index.js
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/service-account.json
