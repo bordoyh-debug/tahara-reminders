@@ -134,11 +134,20 @@ function vesetDayIndexFor(data, d, hefsekDayNum) {
 // H+7 is nekiim day 7 / tevilah. A day covered by more than one hefsek
 // cycle can't normally happen (hefsek clips the veset first), so the first
 // match found is used, same as the client's "last one wins" forEach.
+// a hefsek already logged FOR this very day: the hefsek reminder is pointless
+// (the veset's last day is still painted niddah, so isNiddahDay stays true) and
+// no bedika reminder belongs on the hefsek day itself.
+function hefsekLoggedOn(data, d) {
+  return (data.hefsekEvents || []).some(raw => toKey(parseKey(raw.date)) === toKey(d));
+}
+
 function nekiimInfoFor(data, d) {
   let result = null;
   (data.hefsekEvents || []).forEach(raw => {
     const H = parseKey(raw.date);
     const diff = diffDaysSimple(H, d);
+    // a positive pregnancy test logged in the middle of a count ends it (mirrors buildDayModels)
+    if (diff >= 1 && data.pregnancy && data.pregnancy.start && H < parseKey(data.pregnancy.start) && inPregnancy(data, d) && d >= parseKey(data.pregnancy.start)) return;
     if (diff === 0) result = { isHefsekDay: true, nekiimDayIndex: null, isTevilah: false };
     else if (diff >= 1 && diff <= 6) result = { isHefsekDay: false, nekiimDayIndex: diff, isTevilah: false };
     else if (diff === 7) result = { isHefsekDay: false, nekiimDayIndex: 7, isTevilah: true };
@@ -172,7 +181,14 @@ async function sendToUser(uid, tokensSnap, title, body) {
   if (!tokens.length) return;
   const resp = await messaging.sendEachForMulticast({
     tokens,
-    notification: { title, body },
+    // DATA-ONLY (no top-level "notification" field) so the app's own
+    // service worker / foreground listener always renders it — with the
+    // app's icon and RTL layout — instead of the browser sometimes
+    // auto-rendering its own generic version (plain bell icon, raw site
+    // address as the visible sender) when a "notification" field is
+    // present. See onBackgroundMessage in firebase-messaging-sw.js and the
+    // onMessage listener in tahara_prototype.html.
+    data: { title, body },
     webpush: { fcmOptions: { link: '/' } },
   });
   // prune tokens Firebase reports as dead (uninstalled / permission revoked
@@ -213,7 +229,7 @@ async function main() {
 
     // --- 1. Hefsek reminder — ~3 hours before sunset, on the hefsek day itself ---
     try {
-      if (reminders.hefsek && isNiddahDay(data, today, hefsekDayNum)) {
+      if (reminders.hefsek && isNiddahDay(data, today, hefsekDayNum) && !hefsekLoggedOn(data, today)) {
         const dayIndex = vesetDayIndexFor(data, today, hefsekDayNum);
         if (dayIndex === hefsekDayNum) {
           const sset = sunsetOf(data, today);
@@ -230,7 +246,8 @@ async function main() {
     // --- 2. Mikveh/tevilah reminder — once per cycle, as tevilah approaches ---
     try {
       if (reminders.mikveh !== false) {
-        for (let i = 0; i <= 5; i++) {
+        // from day 3 of the 7 clean days (4 days before tevilah) - not earlier
+        for (let i = 0; i <= 4; i++) {
           const d = addDays(today, i);
           const nek = nekiimInfoFor(data, d);
           if (nek && nek.isTevilah) {
@@ -254,7 +271,7 @@ async function main() {
       const bedikaMode = reminders.bedikaMode || 'twice';
       if (bedikaMode !== 'none') {
         const nek = nekiimInfoFor(data, today);
-        if (nek && !nek.isHefsekDay && !nek.isTevilah) {
+        if (nek && !nek.isHefsekDay && !nek.isTevilah && !hefsekLoggedOn(data, today)) {
           const times = data.reminderTimes || { morning: '07:00', evening: '16:00' };
           // "has the target time already arrived today?" rather than a fixed
           // window — the pushState de-dup check below is what stops a repeat
@@ -307,4 +324,4 @@ if (require.main === module) {
 // exported only so this file's own test suite (test.js) can exercise the
 // pure date/halacha logic directly, without needing real Firebase
 // credentials.
-exports._internal = { resolveHefsekDayNum, effectiveVesetSpan, vesetSlotInfo, vesetJewishDayOf, isNiddahDay, vesetDayIndexFor, nekiimInfoFor, sunsetOf, inPregnancy, toKey, parseKey, addDays };
+exports._internal = { hefsekLoggedOn, resolveHefsekDayNum, effectiveVesetSpan, vesetSlotInfo, vesetJewishDayOf, isNiddahDay, vesetDayIndexFor, nekiimInfoFor, sunsetOf, inPregnancy, toKey, parseKey, addDays };

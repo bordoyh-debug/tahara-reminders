@@ -1,5 +1,5 @@
 process.env.TZ = 'Asia/Jerusalem';
-const { resolveHefsekDayNum, isNiddahDay, vesetDayIndexFor, nekiimInfoFor, sunsetOf, toKey, addDays } = require('./index.js')._internal;
+const { hefsekLoggedOn, resolveHefsekDayNum, isNiddahDay, vesetDayIndexFor, nekiimInfoFor, sunsetOf, toKey, addDays } = require('./index.js')._internal;
 
 let failures = 0;
 function assertEq(actual, expected, label) {
@@ -69,6 +69,15 @@ const sset = sunsetOf({ locId: 'jerusalem' }, sunday);
 const hh = sset.getHours(), mm = sset.getMinutes();
 console.log('Jerusalem sunset for', toKey(sunday), '=', sset.toString());
 assertEq(hh >= 17 && hh <= 19, true, 'Jerusalem late-Sept sunset falls in a plausible local hour range');
+
+// --- hefsek logged today: no hefsek/bedika reminder that day ---
+const dd = { hefsekEvents: [{ date: toKey(sunday) }] };
+assertEq(hefsekLoggedOn(dd, sunday), true, 'hefsek logged on its own day');
+assertEq(hefsekLoggedOn(dd, addDays(sunday, 1)), false, 'not the next day');
+// --- positive pregnancy test mid-count ends the nekiim count ---
+const dp = { hefsekEvents: [{ date: toKey(sunday) }], pregnancy: { start: toKey(addDays(sunday, 2)), birth: null } };
+assertEq(nekiimInfoFor(dp, addDays(sunday, 1)).nekiimDayIndex, 1, 'before the test: still nekiim day 1');
+assertEq(nekiimInfoFor(dp, addDays(sunday, 3)), null, 'after the test: no nekiim');
 
 console.log(failures === 0 ? '\nALL TESTS PASSED' : `\n${failures} TEST(S) FAILED`);
 process.exit(failures === 0 ? 0 : 1);
